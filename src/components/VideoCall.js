@@ -10,7 +10,6 @@ import {
   MessageCircle, 
   Volume2,
   VolumeX,
-  Settings,
   X,
   Loader2,
   AlertCircle,
@@ -18,7 +17,7 @@ import {
   Mic2
 } from 'lucide-react';
 import FloatingParticles from './FloatingParticles';
-import { getDivineResponse, getPeriodicWisdom } from '../services/openai';
+import { getDivineResponse } from '../services/openai';
 import WebRTCService from '../services/webrtc';
 import DivineVideoService from '../services/divineVideo';
 import DivineVoiceService from '../services/divineVoice';
@@ -96,7 +95,7 @@ const VideoCall = ({ selectedGod, onEndCall }) => {
       console.error('Error initializing call:', error);
       setMediaError('Unable to access camera/microphone. Please check permissions.');
     }
-  }, [selectedGod]);
+  }, [selectedGod, handleConnectionStateChange, handleSpeechResult]);
 
   useEffect(() => {
     initializeCall();
@@ -186,70 +185,6 @@ const VideoCall = ({ selectedGod, onEndCall }) => {
       timestamp: new Date().toLocaleTimeString()
     };
     setMessages(prev => [...prev, godMessage]);
-  };
-
-  const handleSendMessage = async () => {
-    if (currentMessage.trim() && !isTyping && !isGodSpeaking) {
-      const userMessageText = currentMessage.trim(); // Capture the message before clearing
-      
-      const userMessage = {
-        id: Date.now(),
-        text: userMessageText,
-        sender: 'user',
-        timestamp: new Date().toLocaleTimeString()
-      };
-      
-      setMessages(prev => [...prev, userMessage]);
-      setCurrentMessage('');
-      setIsTyping(true);
-
-      try {
-        // Convert messages to OpenAI format for context
-        const conversationHistory = messages.map(msg => ({
-          role: msg.sender === 'user' ? 'user' : 'assistant',
-          content: msg.text
-        }));
-
-        // Get intelligent divine response using the captured message
-        const divineResponse = await getDivineResponse(selectedGod, userMessageText, conversationHistory);
-        
-        // Simulate typing delay for natural feel
-        setTimeout(() => {
-          addDivineMessage(divineResponse);
-          setIsTyping(false);
-          
-          // Speak the divine response
-          if (!isGodMuted && divineVoiceService.current) {
-            setIsGodSpeaking(true);
-            divineVoiceService.current.speakDivineMessage(selectedGod, divineResponse, () => {
-              setTimeout(() => {
-                setIsGodSpeaking(false);
-                setCanSpeak(true); // Allow user to speak again
-              }, 1000);
-            });
-          }
-        }, 1000 + Math.random() * 2000);
-
-      } catch (error) {
-        console.error('Error getting divine response:', error);
-        // Fallback response
-        setTimeout(() => {
-          const fallbackResponse = "मेरे बच्चे, मैं आपकी प्रार्थनाएं सुनता हूं। मेरा आशीर्वाद हमेशा आपके साथ हो।";
-          addDivineMessage(fallbackResponse);
-          setIsTyping(false);
-          
-          if (!isGodMuted && divineVoiceService.current) {
-            setIsGodSpeaking(true);
-            divineVoiceService.current.speakDivineMessage(selectedGod, fallbackResponse, () => {
-              setTimeout(() => {
-                setIsGodSpeaking(false);
-                setCanSpeak(true);
-              }, 1000);
-            });
-          }
-        }, 1000);
-      }
-    }
   };
 
   // Speech recognition handlers
