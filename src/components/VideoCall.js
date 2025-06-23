@@ -31,8 +31,6 @@ const VideoCall = ({ selectedGod, onEndCall }) => {
   const [callDuration, setCallDuration] = useState(0);
   const [showChat, setShowChat] = useState(false);
   const [messages, setMessages] = useState([]);
-  const [currentMessage, setCurrentMessage] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
   const [isGodSpeaking, setIsGodSpeaking] = useState(false);
   const [connectionState, setConnectionState] = useState('connecting');
   const [mediaError, setMediaError] = useState(null);
@@ -49,6 +47,83 @@ const VideoCall = ({ selectedGod, onEndCall }) => {
   const divineVoiceService = useRef(null);
   const speechRecognitionService = useRef(null);
   const greetingSent = useRef(false);
+
+  const handleConnectionStateChange = useCallback((state) => {
+    setConnectionState(state);
+    if (state === 'connected' && !isConnected && !greetingSent.current) {
+      greetingSent.current = true;
+      setIsConnected(true);
+      setCanSpeak(false);
+      // Get personalized divine greeting from GPT
+      getDivineResponse(selectedGod, "Hello, I am connecting to you for divine guidance.", [])
+        .then(greeting => {
+          addDivineMessage(greeting);
+          if (divineVoiceService.current) {
+            setIsGodSpeaking(true);
+            divineVoiceService.current.speak(greeting, selectedGod, () => {
+              setIsGodSpeaking(false);
+              setCanSpeak(true);
+            });
+          }
+        })
+        .catch(error => {
+          console.error('Error getting greeting:', error);
+          const fallbackGreeting = "ओम नमः! मैं आपसे जुड़ने के लिए धन्य हूं, मेरे प्रिय भक्त। मैं आज आपकी कैसे सेवा कर सकता हूं?";
+          addDivineMessage(fallbackGreeting);
+          if (divineVoiceService.current) {
+            setIsGodSpeaking(true);
+            divineVoiceService.current.speak(fallbackGreeting, selectedGod, () => {
+              setIsGodSpeaking(false);
+              setCanSpeak(true);
+            });
+          }
+        });
+      if (divineVideoService.current) {
+        divineVideoService.current.createDivineAudio();
+      }
+    }
+  }, [isConnected, selectedGod, addDivineMessage, setCanSpeak, setIsGodSpeaking]);
+
+  const handleSpeechResult = useCallback(async (transcript) => {
+    if (!transcript) {
+      console.log("[SpeechRecognition] Received empty transcript.");
+      setIsProcessingSpeech(false);
+      setCanSpeak(true); // Allow user to try again
+      return;
+    }
+
+    console.log(`[TO GPT] User's Message: ${transcript}`);
+    // Build conversation history for context
+    const conversationHistory = messages.map(msg => ({
+      role: msg.sender === 'user' ? 'user' : 'assistant',
+      content: msg.text
+    }));
+    console.log(`[TO GPT] Conversation History:`, JSON.stringify(conversationHistory, null, 2));
+
+    try {
+      // Get divine response from OpenAI
+      const divineResponse = await getDivineResponse(selectedGod, transcript, conversationHistory);
+      console.log(`[FROM GPT] Divine Response: ${divineResponse}`);
+      addDivineMessage(divineResponse);
+      // Speak the divine response
+      if (divineVoiceService.current) {
+        setIsGodSpeaking(true);
+        setCanSpeak(false);
+        divineVoiceService.current.speak(divineResponse, selectedGod, () => {
+          setIsGodSpeaking(false);
+          setCanSpeak(true);
+        });
+      } else {
+        setCanSpeak(true);
+      }
+    } catch (error) {
+      console.error('Error handling speech result:', error);
+      // In case of error, allow user to speak again
+      setCanSpeak(true);
+    } finally {
+      setIsProcessingSpeech(false);
+    }
+  }, [messages, selectedGod, addDivineMessage, setCanSpeak, setIsGodSpeaking]);
 
   const initializeCall = useCallback(async () => {
     try {
@@ -121,42 +196,6 @@ const VideoCall = ({ selectedGod, onEndCall }) => {
     console.log('Divine connection established');
   };
 
-  const handleConnectionStateChange = (state) => {
-    setConnectionState(state);
-    if (state === 'connected' && !isConnected && !greetingSent.current) {
-      greetingSent.current = true;
-      setIsConnected(true);
-      setCanSpeak(false);
-      // Get personalized divine greeting from GPT
-      getDivineResponse(selectedGod, "Hello, I am connecting to you for divine guidance.", [])
-        .then(greeting => {
-          addDivineMessage(greeting);
-          if (divineVoiceService.current) {
-            setIsGodSpeaking(true);
-            divineVoiceService.current.speak(greeting, selectedGod, () => {
-              setIsGodSpeaking(false);
-              setCanSpeak(true);
-            });
-          }
-        })
-        .catch(error => {
-          console.error('Error getting greeting:', error);
-          const fallbackGreeting = "ओम नमः! मैं आपसे जुड़ने के लिए धन्य हूं, मेरे प्रिय भक्त। मैं आज आपकी कैसे सेवा कर सकता हूं?";
-          addDivineMessage(fallbackGreeting);
-          if (divineVoiceService.current) {
-            setIsGodSpeaking(true);
-            divineVoiceService.current.speak(fallbackGreeting, selectedGod, () => {
-              setIsGodSpeaking(false);
-              setCanSpeak(true);
-            });
-          }
-        });
-      if (divineVideoService.current) {
-        divineVideoService.current.createDivineAudio();
-      }
-    }
-  };
-
   useEffect(() => {
     if (isConnected) {
       intervalRef.current = setInterval(() => {
@@ -188,50 +227,6 @@ const VideoCall = ({ selectedGod, onEndCall }) => {
   };
 
   // Speech recognition handlers
-  const handleSpeechResult = async (transcript) => {
-    if (!transcript) {
-      console.log("[SpeechRecognition] Received empty transcript.");
-      setIsProcessingSpeech(false);
-      setCanSpeak(true); // Allow user to try again
-      return;
-    }
-
-    console.log(`[TO GPT] User's Message: ${transcript}`);
-    
-    // Build conversation history for context
-    const conversationHistory = messages.map(msg => ({
-      role: msg.sender === 'user' ? 'user' : 'assistant',
-      content: msg.text
-    }));
-    console.log(`[TO GPT] Conversation History:`, JSON.stringify(conversationHistory, null, 2));
-
-    try {
-      // Get divine response from OpenAI
-      const divineResponse = await getDivineResponse(selectedGod, transcript, conversationHistory);
-      console.log(`[FROM GPT] Divine Response: ${divineResponse}`);
-
-      addDivineMessage(divineResponse);
-      
-      // Speak the divine response
-      if (divineVoiceService.current) {
-        setIsGodSpeaking(true);
-        setCanSpeak(false);
-        divineVoiceService.current.speak(divineResponse, selectedGod, () => {
-          setIsGodSpeaking(false);
-          setCanSpeak(true);
-        });
-      } else {
-        setCanSpeak(true);
-      }
-    } catch (error) {
-      console.error('Error handling speech result:', error);
-      // In case of error, allow user to speak again
-      setCanSpeak(true);
-    } finally {
-      setIsProcessingSpeech(false);
-    }
-  };
-
   const handleSpeechError = (error) => {
     console.error('Speech recognition error:', error);
     setSpeechError(`Speech recognition error: ${error}`);
