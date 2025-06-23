@@ -38,6 +38,7 @@ const VideoCall = ({ selectedGod, onEndCall }) => {
   const [canSpeak, setCanSpeak] = useState(false);
   const [speechError, setSpeechError] = useState(null);
   const [isProcessingSpeech, setIsProcessingSpeech] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
 
   const videoRef = useRef(null);
   const localVideoRef = useRef(null);
